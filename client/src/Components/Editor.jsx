@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box } from '@mui/material';
 import styled from '@emotion/styled';
 import Quill from 'quill';
 import "quill/dist/quill.snow.css";
+import { io } from 'socket.io-client'
+import { useParams } from 'react-router-dom';
 
 const Component = styled.div`
 background: #F5F5F5
@@ -30,14 +32,65 @@ const toolbarOptions = [
   ];
 
 const Editor = () => {
+  const [socket,setSocket] = useState();
+  const [quill,setQuill] = useState();
+  const { id } = useParams();
+
+
   useEffect(() => {
-    const quill = new Quill('#container', {
+    const quillServer = new Quill('#container', {
         modules: {
           toolbar: toolbarOptions
         },
         theme: 'snow'
-      });      
+      });
+      quillServer.disable();
+      quillServer.setText('Loading the documnet...');
+      setQuill(quillServer);     
   }, []);
+
+  useEffect(()=>{
+    const socketServer = io("http://localhost:9000");
+    setSocket(socketServer);
+    return () => {
+      socketServer.disconnect();
+    }
+  },[]);
+
+  useEffect(()=>{
+    if(quill === null || socket === null) return ;
+
+    const handleChange = (delta,oldData,source)=>{
+      if(source!== 'user') return;
+
+      socket && socket.emit('send-changes', delta);
+  }
+    quill && quill.on('text-change',handleChange)
+    return ()=>{
+      quill && quill.off('text-change',handleChange);
+    }
+    },[quill,socket]);
+
+    useEffect(()=>{
+      if(quill === null || socket === null) return ;
+  
+      const handleChange = (delta)=>{
+        quill.updateContents(delta);
+    }
+      socket && socket.on('receive-changes',handleChange)
+      return ()=>{
+        socket && socket.off('receive-changes',handleChange);
+      }
+      },[quill,socket]);
+
+    useEffect(()=>{
+      if(quill === null || socket===null) return ;
+      socket && socket.once('load-documnet', documnet=>{
+        quill.setContents(documnet);
+        quill.enable();
+      })
+      socket && socket.emit('get-document', id);
+    },[quill,socket,id]);
 
   return (
     <Component>
